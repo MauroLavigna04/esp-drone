@@ -27,6 +27,10 @@
 #include "espnow_ctrl.h"
 #include "espnow_utils.h"
 
+#include "esp_log.h"
+#include "esp_http_server.h"
+#include "web_server.h"
+
 #define UDP_SERVER_PORT         2390
 #define UDP_SERVER_BUFSIZE      64
 
@@ -365,6 +369,11 @@ void wifiInit(void)
     ESP_ERROR_CHECK(esp_netif_dhcps_start(ap_netif));
     DEBUG_PRINT_LOCAL("wifi_init_softap complete.SSID:%s", WIFI_SSID);
 #endif
+
+    httpd_handle_t server = start_web_server();
+    if (server) {
+        DEBUG_PRINT_LOCAL("Web Server initialized.");
+    }
 
     if (udp_server_create(NULL) == ESP_FAIL) {
         DEBUG_PRINT_LOCAL("UDP server create socket failed");
