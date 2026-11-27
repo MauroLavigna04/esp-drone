@@ -86,6 +86,24 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         ip_event_got_ip_t *event = event_data;
         DEBUG_PRINT_LOCAL("Station address: " IPSTR ", UDP port %d", IP2STR(&event->ip_info.ip), UDP_SERVER_PORT);
     }
+#elif CONFIG_BEE_WIFI_APSTA
+    // Events relative to AP mode
+    if (/* event_base == WIFI_EVENT && */event_id == WIFI_EVENT_AP_STACONNECTED) {
+        wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *) event_data;
+        DEBUG_PRINT_LOCAL("station" MACSTR "join, AID=%d", MAC2STR(event->mac), event->aid);
+    } else if (/* event_base == WIFI_EVENT && */event_id == WIFI_EVENT_AP_STADISCONNECTED) {
+        wifi_event_ap_stadisconnected_t *event = (wifi_event_ap_stadisconnected_t *) event_data;
+        DEBUG_PRINT_LOCAL("station" MACSTR "leave, AID=%d", MAC2STR(event->mac), event->aid);
+    // Events relative to STA mode
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        ESP_ERROR_CHECK(esp_wifi_connect());
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = event_data;
+        DEBUG_PRINT_LOCAL("Station address: " IPSTR ", UDP port %d", IP2STR(&event->ip_info.ip), UDP_SERVER_PORT);
+    // } else if (event_base == IP_EVENT && event_id == IP_EVENT_ASSIGNED_IP_TO_CLIENT) {
+    //     const ip_event_assigned_ip_to_client_t *e = (const ip_event_assigned_ip_to_client_t *)event_data;
+    //     DEBUG_PRINT_LOCAL("Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'", IP2STR(&e->ip), MAC2STR(e->mac), e->hostname);
+    }
 #else
     if (event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *) event_data;
@@ -301,6 +319,79 @@ void wifiInit(void)
                     NULL,
                     NULL));
 
+#ifdef CONFIG_BEE_WIFI_APSTA
+    /*Initialize WiFi */
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
+
+    /* Initialize AP */
+    // ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+    //                 IP_EVENT_ASSIGNED_IP_TO_CLIENT,
+    //                 &wifi_event_handler,
+    //                 NULL,
+    //                 NULL));
+    esp_netif_t *esp_netif_ap = esp_netif_create_default_wifi_ap();
+    uint8_t mac_ap[6];
+    ESP_ERROR_CHECK(esp_wifi_get_mac(ESP_IF_WIFI_AP, mac_ap));
+    sprintf(WIFI_SSID, "%s_%02X%02X%02X%02X%02X%02X", CONFIG_WIFI_BASE_SSID, mac_ap[0], mac_ap[1], mac_ap[2], mac_ap[3], mac_ap[4], mac_ap[5]);
+    wifi_config_t wifi_ap_config = {
+        .ap = {
+                .channel = WIFI_CH,
+                .max_connection = WIFI_MAX_STA_CONN,
+                .authmode = WIFI_AUTH_WPA_WPA2_PSK,
+            },
+    };
+    memcpy(wifi_ap_config.ap.ssid, WIFI_SSID, strlen(WIFI_SSID) + 1) ;
+    wifi_ap_config.ap.ssid_len = strlen(WIFI_SSID);
+    memcpy(wifi_ap_config.ap.password, WIFI_PWD, strlen(WIFI_PWD) + 1) ;
+    if (strlen(WIFI_PWD) == 0) {
+        wifi_ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    }
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
+    espnow_config_t espnow_config = ESPNOW_INIT_CONFIG_DEFAULT();
+    espnow_init(&espnow_config);
+    esp_event_handler_register(ESP_EVENT_ESPNOW, ESP_EVENT_ANY_ID, app_espnow_event_handler, NULL);
+    ESP_ERROR_CHECK(espnow_ctrl_responder_bind(30 * 1000, -55, NULL));
+    espnow_ctrl_responder_data(espnow_ctrl_data_cb);
+    esp_netif_ip_info_t ip_info = {
+        .ip.addr = ipaddr_addr("192.168.43.42"),
+        .netmask.addr = ipaddr_addr("255.255.255.0"),
+        .gw.addr      = ipaddr_addr("192.168.43.42"),
+    };
+    ESP_ERROR_CHECK(esp_netif_dhcps_stop(esp_netif_ap));
+    ESP_ERROR_CHECK(esp_netif_set_ip_info(esp_netif_ap, &ip_info));
+    ESP_ERROR_CHECK(esp_netif_dhcps_start(esp_netif_ap));
+    DEBUG_PRINT_LOCAL("wifi_init_softap complete.SSID:%s", WIFI_SSID);
+
+    /* Initialize STA */
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
+                    IP_EVENT_STA_GOT_IP,
+                    &wifi_event_handler,
+                    NULL,
+                    NULL));
+    const char *ssid = CONFIG_BEE_WIFI_STA_SSID;
+    const char *password = CONFIG_BEE_WIFI_STA_PASSWORD;
+    if (strlen(ssid) == 0 || strlen(ssid) > 32 ||
+            strlen(password) < 8 || strlen(password) > 64) {
+        DEBUG_PRINT_LOCAL("Configure a station SSID (1-32 bytes) and password (8-64 bytes) in menuconfig");
+        return;
+    }
+    /*esp_netif_t *esp_netif_sta = */ esp_netif_create_default_wifi_sta();
+    wifi_config_t wifi_sta_config = {
+        .sta = {
+            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
+        },
+    };
+    memcpy(wifi_sta_config.sta.ssid, ssid, strlen(ssid));
+    memcpy(wifi_sta_config.sta.password, password, strlen(password));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config) );
+    uint8_t mac_sta[6];
+    ESP_ERROR_CHECK(esp_wifi_get_mac(WIFI_IF_STA, mac_sta));
+    DEBUG_PRINT_LOCAL("Station MAC " MACSTR, MAC2STR(mac_sta));
+
+    /* Start WiFi */
+    ESP_ERROR_CHECK(esp_wifi_start() );
+#endif                    
 #ifdef CONFIG_BEE_WIFI_STA
     esp_netif_create_default_wifi_sta();
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
@@ -328,7 +419,8 @@ void wifiInit(void)
     uint8_t mac[6];
     ESP_ERROR_CHECK(esp_wifi_get_mac(WIFI_IF_STA, mac));
     DEBUG_PRINT_LOCAL("Station MAC " MACSTR, MAC2STR(mac));
-#else
+#endif
+#ifdef CONFIG_BEE_WIFI_AP
     esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
     uint8_t mac[6];
     ESP_ERROR_CHECK(esp_wifi_get_mac(ESP_IF_WIFI_AP, mac));

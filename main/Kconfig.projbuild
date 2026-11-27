@@ -51,20 +51,37 @@ menu "ESPDrone Config"
     endmenu
 
     menu "wireless config"
-        config BEE_WIFI_STA
-            bool "Join an existing Wi-Fi network (station mode)"
-            default y
-            help
-                Join the lab network using DHCP. Disable to use the upstream AP mode.
+        choice BEE_WIFI_MODE
+            prompt "Wi-Fi Mode"
+            default BEE_WIFI_APSTA
+
+            config BEE_WIFI_APSTA
+                bool "Station + SoftAP (APSTA)"
+            config BEE_WIFI_STA
+                bool "Station (STA)"
+            config BEE_WIFI_AP
+                bool "Access Point (SoftAP)"
+        endchoice
+        # config BEE_WIFI_APSTA
+        #     bool "Use two network interface in softAP+STA"
+        #     default n
+        #     help
+        #         Join to an existent netwotk as a station and host a network as Access Point
+        # config BEE_WIFI_STA
+        #     bool "Join an existing Wi-Fi network (station mode)"
+        #     default y
+        #     help
+        #         Join the lab network using DHCP. Disable to use the upstream AP mode.
+        
         config BEE_WIFI_STA_SSID
             string "Station network SSID"
-            depends on BEE_WIFI_STA
+            depends on BEE_WIFI_STA || BEE_WIFI_APSTA
             default ""
             help
                 SSID of the 2.4 GHz lab network, at most 32 bytes.
         config BEE_WIFI_STA_PASSWORD
             string "Station network password"
-            depends on BEE_WIFI_STA
+            depends on BEE_WIFI_STA || BEE_WIFI_APSTA
             default ""
             help
                 WPA2/WPA3 personal password, 8-63 bytes or 64 hexadecimal digits.
