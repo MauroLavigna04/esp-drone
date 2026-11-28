@@ -86,7 +86,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         ip_event_got_ip_t *event = event_data;
         DEBUG_PRINT_LOCAL("Station address: " IPSTR ", UDP port %d", IP2STR(&event->ip_info.ip), UDP_SERVER_PORT);
     }
-#elif CONFIG_BEE_WIFI_APSTA
+#endif
+#ifdef CONFIG_BEE_WIFI_APSTA
     // Events relative to AP mode
     if (/* event_base == WIFI_EVENT && */event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *) event_data;
@@ -104,7 +105,8 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
     //     const ip_event_assigned_ip_to_client_t *e = (const ip_event_assigned_ip_to_client_t *)event_data;
     //     DEBUG_PRINT_LOCAL("Assigned IP to client: " IPSTR ", MAC=" MACSTR ", hostname='%s'", IP2STR(&e->ip), MAC2STR(e->mac), e->hostname);
     }
-#else
+#endif
+#ifdef CONFIG_BEE_WIFI_AP
     if (event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t *event = (wifi_event_ap_staconnected_t *) event_data;
         DEBUG_PRINT_LOCAL("station" MACSTR "join, AID=%d", MAC2STR(event->mac), event->aid);
